@@ -251,6 +251,21 @@ class _FastText():
             qnorm
         )
 
+    def get_nn_for_vector(self, vector, k):
+        """
+        Given a vector, returns k nearest neighbors.
+
+        get a single vector represenation. This function
+        assumes to be given a single line of text. We split words on
+        whitespace (space, newline, tab, vertical tab) and the control
+        characters carriage return, formfeed and the null character.
+        """
+        dim = self.get_dimension()
+        assert len(vector.shape) == 1
+        assert vector.shape[0] == dim
+        b = fasttext.Vector(vector)
+        result = self.f.getNNForVector(b, k)
+        return result
 
 # TODO:
 # Not supported:

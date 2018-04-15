@@ -17,6 +17,8 @@
 #include <iterator>
 #include <sstream>
 #include <cmath>
+#include <pybind11/numpy.h>
+
 
 std::pair<std::vector<std::string>, std::vector<std::string>> getLineText(
     fasttext::FastText& m,
@@ -97,6 +99,26 @@ PYBIND11_MODULE(fasttext_pybind, m) {
 
   py::class_<fasttext::Vector>(m, "Vector", py::buffer_protocol())
       .def(py::init<ssize_t>())
+      .def("__init__", [](fasttext::Vector& m, py::array_t<fasttext::real> b) {
+          /* Request a buffer descriptor from Python */
+          py::buffer_info info = b.request();
+
+          /* Some sanity checks ... */
+          if (info.format != py::format_descriptor<fasttext::real>::format())
+              throw std::runtime_error("Incompatible format: expected a float array!");
+
+          if (info.ndim != 1)
+              throw std::runtime_error("Incompatible buffer dimension! Expected 1-dimensional array.");
+
+          auto arr_size = info.shape[0];
+          new (&m) fasttext::Vector(arr_size);
+
+          fasttext::real *arr_ptr = (fasttext::real *) info.ptr;
+
+          for (int64_t i = 0; i < arr_size; i++) {
+              m[i] = arr_ptr[i];
+          }
+     })
       .def_buffer([](fasttext::Vector& m) -> py::buffer_info {
         return py::buffer_info(
             m.data(),
@@ -324,6 +346,21 @@ PYBIND11_MODULE(fasttext_pybind, m) {
             d->getSubwords(word, ngrams, subwords);
             return std::pair<std::vector<std::string>, std::vector<int32_t>>(
                 subwords, ngrams);
+          })
+      .def(
+          "getNNForVector",
+          [](fasttext::FastText& m, const fasttext::Vector& queryVec, int32_t k) {
+              std::string queryWord;
+              std::shared_ptr<const fasttext::Dictionary> dict = m.getDictionary();
+              fasttext::Matrix wordVectors(dict->nwords(), m.getDimension());
+              std::cerr << "Pre-computing word vectors...";
+              m.precomputeWordVectors(wordVectors);
+              std::cerr << " done." << std::endl;
+              std::set<std::string> banSet;
+              std::vector<std::pair<fasttext::real, std::string>> results;
+              banSet.clear();
+              m.findNN(wordVectors, queryVec, k, banSet, results);
+              return results;
           })
       .def("isQuant", [](fasttext::FastText& m) { return m.isQuant(); });
 }
