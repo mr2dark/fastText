@@ -99,7 +99,7 @@ PYBIND11_MODULE(fasttext_pybind, m) {
 
   py::class_<fasttext::Vector>(m, "Vector", py::buffer_protocol())
       .def(py::init<ssize_t>())
-      .def("__init__", [](fasttext::Vector& m, py::array_t<fasttext::real> b) {
+      .def("__init__", [](fasttext::Vector& v, py::array_t<fasttext::real> b) {
           /* Request a buffer descriptor from Python */
           py::buffer_info info = b.request();
 
@@ -111,14 +111,14 @@ PYBIND11_MODULE(fasttext_pybind, m) {
               throw std::runtime_error("Incompatible buffer dimension! Expected 1-dimensional array.");
 
           auto arr_size = info.shape[0];
-          new (&m) fasttext::Vector(arr_size);
+          new (&v) fasttext::Vector(arr_size);
 
           fasttext::real *arr_ptr = (fasttext::real *) info.ptr;
 
           for (int64_t i = 0; i < arr_size; i++) {
-              m[i] = arr_ptr[i];
+              v[i] = arr_ptr[i];
           }
-     })
+      })
       .def_buffer([](fasttext::Vector& m) -> py::buffer_info {
         return py::buffer_info(
             m.data(),
@@ -133,6 +133,34 @@ PYBIND11_MODULE(fasttext_pybind, m) {
       m, "Matrix", py::buffer_protocol(), py::module_local())
       .def(py::init<>())
       .def(py::init<ssize_t, ssize_t>())
+      .def("__init__", [](fasttext::Matrix& m, py::array_t<fasttext::real> b) {
+          /* Request a buffer descriptor from Python */
+          py::buffer_info info = b.request();
+
+          /* Some sanity checks ... */
+          if (info.format != py::format_descriptor<fasttext::real>::format())
+              throw std::runtime_error("Incompatible format: expected a float array!");
+
+          if (info.ndim != 2)
+              throw std::runtime_error("Incompatible buffer dimension! Expected 2-dimensional array.");
+
+          auto dim1_size = info.shape[0];
+          auto dim2_size = info.shape[1];
+          new (&m) fasttext::Matrix(dim1_size, dim2_size);
+
+          auto accessor = [&info](int64_t i, int64_t j) {
+              return *((fasttext::real *)((char *)info.ptr + i * info.strides[0] + j * info.strides[1]));
+          };
+//          auto accessor = info.strides != nullptr ? [&info](int64_t i, int64_t j) {
+//              return *((fasttext::real *)((char *)info.ptr + i * info.strides[0] + j * info.strides[1]));
+//          } : [&info, dim2_size](int64_t i, int64_t j) {return ((fasttext::real *) info.ptr)[i * dim2_size + j];};
+
+          for (int64_t i = 0; i < dim1_size; i++) {
+              for (int64_t j = 0; j < dim2_size; j++) {
+                  m.at(i, j) = accessor(i, j);
+              }
+          }
+      })
       .def_buffer([](fasttext::Matrix& m) -> py::buffer_info {
         return py::buffer_info(
             m.data(),
@@ -348,14 +376,18 @@ PYBIND11_MODULE(fasttext_pybind, m) {
                 subwords, ngrams);
           })
       .def(
-          "getNNForVector",
-          [](fasttext::FastText& m, const fasttext::Vector& queryVec, int32_t k) {
-              std::string queryWord;
+          "precomputeWordVectors",
+          [](fasttext::FastText& m) {
               std::shared_ptr<const fasttext::Dictionary> dict = m.getDictionary();
-              fasttext::Matrix wordVectors(dict->nwords(), m.getDimension());
+              fasttext::Matrix *wordVectors = new fasttext::Matrix(dict->nwords(), m.getDimension());
               std::cerr << "Pre-computing word vectors...";
-              m.precomputeWordVectors(wordVectors);
+              m.precomputeWordVectors(*wordVectors);
               std::cerr << " done." << std::endl;
+              return wordVectors;
+          })
+      .def(
+          "getNNForVector",
+          [](fasttext::FastText& m, const fasttext::Matrix& wordVectors, const fasttext::Vector& queryVec, int32_t k) {
               std::set<std::string> banSet;
               std::vector<std::pair<fasttext::real, std::string>> results;
               banSet.clear();

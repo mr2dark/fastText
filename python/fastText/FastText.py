@@ -251,7 +251,7 @@ class _FastText():
             qnorm
         )
 
-    def get_nn_for_vector(self, vector, k):
+    def get_nn_for_vector(self, word_vectors, vector, k):
         """
         Given a vector, returns k nearest neighbors.
 
@@ -264,7 +264,19 @@ class _FastText():
         assert len(vector.shape) == 1
         assert vector.shape[0] == dim
         b = fasttext.Vector(vector)
-        result = self.f.getNNForVector(b, k)
+        result = self.f.getNNForVector(word_vectors, b, k)
+        return result
+
+    def precompute_word_vectors(self):
+        """
+        Given a vector, returns k nearest neighbors.
+
+        get a single vector represenation. This function
+        assumes to be given a single line of text. We split words on
+        whitespace (space, newline, tab, vertical tab) and the control
+        characters carriage return, formfeed and the null character.
+        """
+        result = self.f.precomputeWordVectors()
         return result
 
 # TODO:
